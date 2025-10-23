@@ -1,0 +1,109 @@
+
+library(caret)
+library(glmnet)
+library(dplyr)
+
+
+data = read.table("divorce.txt", header=TRUE)
+
+
+set.seed(3301)  
+shuffled_data = data[sample(nrow(data)), ]
+
+
+predictors = as.matrix(shuffled_data[, c("year", "unemployed", "femlab", "marriage", "birth", "military")])
+response = shuffled_data$divorce
+train_control = trainControl(method = "cv", number = 5)
+
+
+model = train(predictors, response, method = "glmnet", trControl = train_control, tuneLength = 10)
+
+print(model)
+print(coef(model$finalModel, model$bestTune$lambda))
+plot(varImp(model), main = "Variable Importance")
+
+#---------------B---------------------#
+
+train_data = shuffled_data[1:70, ]  
+test_data = shuffled_data[71:77, ]  
+predictors_train = as.matrix(train_data[, c("year", "unemployed", "femlab", "marriage", "birth", "military")])
+response_train = train_data$divorce
+train_control = trainControl(method = "cv", number = 5)
+model = train(predictors_train, response_train, method = "glmnet", trControl = train_control, tuneLength = 10)
+
+print(model)
+print(coef(model$finalModel, model$bestTune$lambda))
+
+predictors_test = as.matrix(test_data[, c("year", "unemployed", "femlab", "marriage", "birth", "military")])
+predictions = predict(model, newdata = predictors_test)
+residuals = mean((test_data$divorce - predictions)^2)
+
+
+cat("Mean Squared Error on Test:", residuals, "\n")
+# since the residual is posetive on average the model is overestimating
+
+#----------------------- 2 ---------------------
+
+trees = read.table("trees.txt", header = TRUE)
+trees = trees %>% mutate(logV = log(V), D2 = D^2, H2 = H^2, DH = D * H) %>% sample_frac(1)  
+
+models = list(
+  lm(logV ~ D + H, data = trees),
+  lm(logV ~ D + D2 + H, data = trees),
+  lm(logV ~ D + H + H2, data = trees),
+  lm(logV ~ D + D2 + H + H2, data = trees),
+  lm(logV ~ D + H + DH, data = trees),
+  lm(logV ~ D + D2 + H + H2 + DH, data = trees)
+)
+
+
+aic_values = sapply(models, AIC)
+bic_values = sapply(models, BIC)
+
+set.seed(3301)
+folds = createFolds(trees$logV, k = 5)
+mspe_values = sapply(models, function(model) {
+  mspe = sapply(folds, function(fold) {
+    train_data = trees[-fold, ]
+    test_data = trees[fold, ]
+    predictions = predict(model, newdata = test_data)
+    mean((predictions - test_data$logV)^2)
+  })
+  mean(mspe)
+})
+
+
+best_aic = which.min(aic_values)
+best_bic = which.min(bic_values)
+best_mspe = which.min(mspe_values)
+
+cat("Best model by AIC:", best_aic, "\n")
+cat("Best model by BIC:", best_bic, "\n")
+cat("Best model by 5-fold CV (MSPE):", best_mspe, "\n")
+
+# ---------------- 3 -------------------#
+# Load necessary libraries
+
+data = read.table("paper.txt", header=TRUE, sep=" ")
+
+
+data$operator = as.factor(data$operator)
+
+model = lm(bright ~ operator, data=data)
+summary_model = summary(model)
+summary_model
+
+p_values = summary_model$coefficients[,4]
+significance = p_values < 0.01
+significance
+# we can see that no operator settings is statistically significant at the 1% level.
+
+null_model = lm(bright ~ 1, data=data)
+aic_values = AIC(model, null_model)
+bic_values = BIC(model, null_model)
+
+print("AIC values for full model and null model:")
+print(aic_values)
+print("BIC values for full model and null model:")
+print(bic_values)
+

@@ -1,0 +1,244 @@
+---
+title: "STAT3301 Homework4 Solutions"
+author: "He Zhou"
+date: "2023-11-6"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem 1
+
+```{r}
+wine <- read.table("wine.txt", header=TRUE)
+head(wine)
+```
+
+### (a)
+```{r}
+plot(mortality ~ consumption, data = wine)
+```
+
+Based on the scatter plot, a linear regression model with `mortality` as the response and `consumption` as the predictor is not appropriate. Because at different levels of `consumption` (for example, 5 and 20), increasing one unit of `consumption` result in different amounts of change in `mortality`. 
+
+
+### (b)
+```{r}
+plot(log(mortality) ~ log(consumption), data = wine)
+```
+
+Based on the scatter plot, linear regression model with `log(mortality)` as the response and `log(consumption)` as predictor is more appropriate.
+
+
+### (c)
+```{r}
+summary(log(wine$consumption))
+```
+
+Let $x = (1, x_2)^T$, where $x_2$ is the log of the `consumption` level, with range $[1.030, 4.329]$. Let $Y$ be the response, which is the log of the `mortality`. Let $Y|x$ be the yet-to-be observed response when `log(consumption)` is $x_2$, The linear regression model assumes that 
+
+$$
+Y | x = \beta^T x + \varepsilon, ~x\in\{1\}\times[1.030,4.329],
+$$
+where $\beta=(\beta_1,\beta_2)^T\in\mathbb{R}^{2}$ is the vector of unknown regression coefficients; and $\varepsilon$ is a random variable with an unspecified distribution having mean $0$ and unknown variance $\sigma^2\in(0,\infty)$.
+
+### (d)
+
+#### By hand
+```{r}
+X <- cbind(1, log(wine$consumption))
+y <- log(wine$mortality)
+beta.hat <- qr.solve(crossprod(X), crossprod(X, y))
+beta.hat
+```
+
+#### Using `lm`
+```{r}
+mod <- lm(log(mortality) ~ log(consumption), data = wine)
+beta.hat <- mod$coefficients
+beta.hat
+```
+
+
+The estimation of regression coefficients is $\hat{\beta}=(2.556, -0.356)^T$. So the estimate of $E[Y|x]$ is
+$$
+\hat{y}(x_2) = 2.556 - 0.356 \times x_2
+$$
+
+### (e)
+
+#### i
+We can interpret $\hat{\beta}_1$ as the prediction of the response when $x_2$ is $0$. However, $0$ does not belong to the range of $x_2$, $[1.030,4.329]$. Predicting the response at a predictor value outside the range of the predictor does not make sense.
+
+#### ii
+A unit increase in `log(consumption)` decreases the estimated mean of `log(mortality)` by $0.356$ units. Or increasing the average per capita consumption of wine in liters by $2.718$ times decreases the the mortality rate by $\exp(\hat{\beta}_2)=0.701$ times.
+
+#### iii
+When `consumption` is at level $c$, the predicted value of `mortality` is
+$$
+\exp( 2.556 - 0.356 \times \log(c));
+$$
+
+When `consumption` increases one unit from $c$ to $c+1$, the predicted value of `mortality` becomes
+$$
+\exp( 2.556 - 0.356 \times \log(c+1)).
+$$
+
+Therefore, one unit increase in `consumption` from $c$ to $c+1$ decreases the predicted value of `mortality` by 
+$$
+\frac{\exp( 2.556 - 0.356 \times \log(c+1))} {\exp( 2.556 - 0.356 \times \log(c))} = \exp(-0.356)=0.7
+$$
+times. i.e. the new predicted value is 0.7 times of the original prediced value.
+
+### (f)
+```{r}
+plot(log(mortality) ~ log(consumption), data = wine,
+     xlim = c(1.0, 4.5),
+     main = "scatter plot with fitted regression line")
+log.consumption.seq <- seq(1.0, 4.5, 0.1)
+pred.val <- beta.hat[1] + beta.hat[2] * log.consumption.seq
+lines(log.consumption.seq, pred.val)
+```
+
+
+### (g)
+```{r}
+consumption.seq <- seq(3.0, 75.0, 0.05)
+fitted.mortality <- exp(beta.hat[1] + beta.hat[2] * log(consumption.seq))
+plot(mortality ~ consumption, data = wine,
+     xlim = c(3.0, 75.0),
+     main = "scatter plot with fitted curve")
+lines(consumption.seq, fitted.mortality)
+```
+
+### (h)
+```{r}
+fitted.mortality[which(consumption.seq==15.5)]
+```
+
+Based on the fitted model, the mortality rate of a country with per capita wine consumption of $15.5$ liters is predicted as $4.86\%$.
+
+
+
+## Problem 2
+```{r}
+rhrdat <- readRDS("RHR.RDS")
+head(rhrdat)
+```
+
+### (a)
+```{r}
+## make the design matrix:
+X <- cbind(1, rhrdat$exercise, rhrdat$age)
+## make the measured response vector
+y <- rhrdat$RHRdec
+
+beta.hat <- qr.solve(crossprod(X), crossprod(X,y))
+beta.hat
+```
+
+### (b)
+With `age` held fixed, an hour increase in `exercise` per week during the three month study decreases the estimated mean of the resting heart rate after three months of protocol by 3.88%. 
+
+### (c)
+```{r}
+summary(rhrdat$age)
+```
+
+The range of `age` is between 18 and 39, and 0 is out of the range. So it does not make sense to interpret the estimate of the intercept.
+
+
+### (d)
+
+#### (i)
+```{r}
+fitted <- X %*% beta.hat
+residuals <- y - fitted
+## QQ plot
+probs <- ppoints(length(residuals))
+residuals.percentiles <- quantile(residuals, probs)
+fitted.normal.percentiles <- qnorm(probs, mean = mean(residuals), sd = sd(residuals))
+plot(fitted.normal.percentiles, residuals.percentiles)
+abline(0,1)
+```
+
+There does not appear to be strong visual evidence to reject the assumption that the errors are Normal.
+
+#### (ii)
+```{r}
+## calculate standard error
+n <- length(y)
+p <- length(beta.hat)
+se <- sqrt(sum(residuals^2) / (n-p))
+
+## calculate test statistic
+XtX <- crossprod(X)
+XtXinv <- qr.solve(XtX)
+est.std.err3 <- se * sqrt(XtXinv[3,3])
+t.val <- beta.hat[3] / est.std.err3
+t.val
+
+## calculate observed p-value
+p.val <- 2*pt(-abs(t.val), n-p)
+p.val
+```
+
+The observed value of the test statistic $T$ is $2.90$ with observed p-value $0.0067$. So we can reject the null hypothesis at significance level $\alpha=0.01$.
+
+
+### (e)
+We want to test
+$$
+\begin{aligned}
+H_0&:\beta_2=-0.01,
+\\
+H_a&:\beta_2<-0.01.
+\end{aligned}
+$$
+
+Then under the assumption that the errors are i.i.d. $N(0,\sigma^2)$, the OLS estimate of $\beta_2$ has the distribution
+$$
+\hat{\beta}_2\sim
+N(\beta_2, \sigma^2[(X^TX)^{-1}]_{2,2}).
+$$
+So we have
+$$
+\frac{\hat{\beta}_2 - \beta_2}{ S_E \sqrt{[(X^TX)^{-1}]_{2,2}}}
+\sim
+T(n-p).
+$$
+where $S_E=\sqrt{\Vert Y - X\hat{\beta}\Vert^2/(n-p)}$. Then we define the test statistic as
+$$
+T = \frac{\hat{\beta}_2 - (-0.01)}{ S_E \sqrt{[(X^TX)^{-1}]_{2,2}}},
+$$
+which follows $T(n-p)$ under the null hypothesis. Let $t$ be the realization of the test statistic $T$. Compared to the current realization $t$, smaller values of the new realization of the test statistic are more in favor of the alternative hypothesis. Therefore, the observed p-value should be defined as 
+$$
+P(T_{new}\leq t|H_0)=\texttt{pt}(t, n-p)
+$$
+
+
+
+
+```{r}
+beta2.null <- -0.01
+
+## calculate test statistic
+est.std.err2 <- se * sqrt(XtXinv[2,2])
+t2.val <- (beta.hat[2] - beta2.null) / est.std.err2
+t2.val
+
+## calculate observed p-value
+p2.val <- pt(t2.val, n-p)
+p2.val
+```
+
+The observed value of the test statistic $T$ is $-2.63$ with observed p-value $0.0065$. So we can reject the null hypothesis $H_0:\beta_2=-0.01$ in favor of the alternative $H_a:\beta_2<-0.01$ at significance level $\alpha=0.01$. So we have strong evidence that exercise would reduce resting heart rate more than $1\%$ per extra hour of exercise.
+
+
+
+
+
